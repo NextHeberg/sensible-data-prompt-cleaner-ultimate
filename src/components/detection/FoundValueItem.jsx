@@ -1,12 +1,11 @@
 /**
  * Single detected value row in the sidebar.
- * Shows the original value, its replacement, and an exclude toggle.
  */
 import { createMemo } from 'solid-js';
 import { store, excludeValue, includeValue } from '../../store/appStore.js';
+import { t } from '../../i18n/index.js';
 
 export function FoundValueItem(props) {
-  // { original, replacement }
   const isExcluded = createMemo(() => store.excludedValues.includes(props.original));
 
   const truncated = createMemo(() => {
@@ -26,38 +25,34 @@ export function FoundValueItem(props) {
     <div
       class={`flex items-center justify-between gap-2 px-2 py-1.5 rounded-md text-xs transition-colors group ${
         isExcluded()
-          ? 'opacity-40 bg-zinc-800/30'
-          : 'hover:bg-zinc-800/50'
+          ? 'opacity-40 bg-zinc-100/50 dark:bg-zinc-800/30'
+          : 'hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
       }`}
     >
       <div class="flex items-center gap-2 min-w-0 flex-1">
-        {/* Original value */}
         <code
-          class="truncate text-zinc-300 font-mono"
+          class="truncate text-zinc-600 dark:text-zinc-300 font-mono"
           title={props.original}
         >
           {truncated()}
         </code>
 
-        {/* Arrow */}
-        <svg class="w-3 h-3 text-zinc-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg class="w-3 h-3 text-zinc-400 dark:text-zinc-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
         </svg>
 
-        {/* Replacement */}
-        <code class="shrink-0 font-mono text-indigo-400 opacity-80">
+        <code class="shrink-0 font-mono text-indigo-500 dark:text-indigo-400 opacity-80">
           {isExcluded() ? props.original : props.replacement}
         </code>
       </div>
 
-      {/* Exclude toggle */}
       <button
         onClick={toggle}
-        title={isExcluded() ? 'Réactiver le remplacement' : 'Ignorer cette valeur (faux positif)'}
+        title={isExcluded() ? t('detection.includeValue') : t('detection.excludeValue')}
         class={`shrink-0 p-0.5 rounded transition-colors opacity-0 group-hover:opacity-100 ${
           isExcluded()
-            ? 'text-emerald-400 hover:text-emerald-300'
-            : 'text-zinc-500 hover:text-amber-400'
+            ? 'text-emerald-500 dark:text-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-300'
+            : 'text-zinc-400 dark:text-zinc-500 hover:text-amber-500 dark:hover:text-amber-400'
         }`}
       >
         {isExcluded() ? (

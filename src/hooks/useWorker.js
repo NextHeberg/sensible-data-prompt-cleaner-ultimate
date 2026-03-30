@@ -68,8 +68,11 @@ export function processText(text, options) {
     return;
   }
 
-  // Build the list of enabled pattern objects
-  const enabledList = PATTERNS.filter((p) => enabledPatterns[p.id]);
+  // Send only serializable pattern IDs — the worker imports PATTERNS itself
+  // (RegExp and functions cannot be cloned via structured clone algorithm)
+  const enabledPatternIds = PATTERNS
+    .filter((p) => enabledPatterns[p.id])
+    .map((p) => p.id);
 
   latestRequestId++;
   const requestId = latestRequestId;
@@ -79,7 +82,7 @@ export function processText(text, options) {
   getWorker().postMessage({
     type: 'process',
     text,
-    enabledPatterns: enabledList,
+    enabledPatternIds,
     replacementStyle,
     excludedValues: excludedValues || [],
     requestId,
