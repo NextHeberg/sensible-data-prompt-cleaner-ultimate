@@ -28,8 +28,8 @@ export const addressPatterns = [
     id: 'address_fr',
     label: 'Adresse française (possible)',
     category: 'address',
-    // French street address: number + street type keyword + name
-    regex: /\b\d{1,4}\s*(?:bis|ter|quater)?\s*,?\s*(?:rue|avenue|av\.|boulevard|bd\.|chemin|impasse|allée|route|voie|place|square|passage|cité|villa|résidence|quartier|hameau|lieu[-\s]dit)\s+(?:de\s+la?\s+|du\s+|des\s+|de\s+|l[ea]\s+)?[A-ZÁÀÂÄÉÈÊËÎÏÔÙÛÜÇ][a-záàâäéèêëîïôùûüç\s\-]{2,50}/gi,
+    // French street address: number + street type keyword + name + optional ZIP + city
+    regex: /\b\d{1,4}\s*(?:bis|ter|quater)?\s*,?\s*(?:rue|avenue|av\.|boulevard|bd\.|chemin|impasse|allée|route|voie|place|square|passage|cité|villa|résidence|quartier|hameau|lieu[-\s]dit)\s+(?:de\s+la?\s+|du\s+|des\s+|de\s+|l[ea]\s+)?[A-ZÁÀÂÄÉÈÊËÎÏÔÙÛÜÇ][a-záàâäéèêëîïôùûüç\-]+(?:\s+[a-záàâäéèêëîïôùûüç][a-záàâäéèêëîïôùûüç\-]+){0,6}(?:[,\s]+(?:0[1-9]|[1-8]\d|9[0-5])\d{3}(?:[,\s]+[A-ZÁÀÂÄÉÈÊËÎÏÔÙÛÜÇ][a-záàâäéèêëîïôùûüç\s\-]{2,30})?)?/gi,
     validate: null,
     placeholder: 'ADRESSE',
     risk: 'medium',
