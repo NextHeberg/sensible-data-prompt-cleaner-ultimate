@@ -1,7 +1,8 @@
 /**
- * Disclaimer modal and footer notice.
+ * Disclaimer footer notice and modal.
  */
 import { createSignal, Show } from 'solid-js';
+import { t } from '../../i18n/index.js';
 
 export function Disclaimer() {
   const [open, setOpen] = createSignal(false);
@@ -9,16 +10,16 @@ export function Disclaimer() {
   return (
     <>
       {/* Footer strip */}
-      <div class="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-500">
-        <span class="text-amber-400">⚠</span>
+      <div class="flex items-center gap-2 text-xs text-zinc-400 dark:text-zinc-500">
+        <span class="text-amber-500 dark:text-amber-400">⚠</span>
         <span>
-          Cet outil <strong class="text-zinc-400">assiste</strong> la détection — il ne garantit pas la suppression complète.
+          {t('disclaimer.short')}<strong class="text-zinc-600 dark:text-zinc-400">{t('disclaimer.shortBold')}</strong>{t('disclaimer.shortEnd')}
         </span>
         <button
           onClick={() => setOpen(true)}
-          class="underline hover:text-zinc-300 transition-colors"
+          class="underline hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors whitespace-nowrap"
         >
-          En savoir plus
+          {t('disclaimer.learnMore')}
         </button>
       </div>
 
@@ -28,54 +29,43 @@ export function Disclaimer() {
           class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
           onClick={(e) => e.target === e.currentTarget && setOpen(false)}
         >
-          <div class="bg-zinc-900 dark:bg-zinc-900 border border-zinc-700 rounded-xl max-w-lg w-full p-6 shadow-2xl">
+          <div class="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl max-w-lg w-full p-6 shadow-2xl">
             <div class="flex items-start justify-between mb-4">
-              <h2 class="text-lg font-semibold text-white flex items-center gap-2">
-                <span class="text-amber-400">⚠</span>
-                Avertissement & Responsabilité
+              <h2 class="text-lg font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
+                <span class="text-amber-500 dark:text-amber-400">⚠</span>
+                {t('disclaimer.title')}
               </h2>
               <button
                 onClick={() => setOpen(false)}
-                class="text-zinc-400 hover:text-white transition-colors text-xl leading-none"
+                class="text-zinc-400 hover:text-zinc-700 dark:hover:text-white transition-colors text-xl leading-none"
               >
                 ×
               </button>
             </div>
 
-            <div class="space-y-3 text-sm text-zinc-300 leading-relaxed">
-              <p>
-                <strong class="text-white">Cet outil est une aide, pas une garantie.</strong> Il détecte
-                les patterns courants via des expressions régulières. Il peut manquer des données
-                sensibles non standard.
-              </p>
-
-              <ul class="space-y-2 pl-4 list-disc text-zinc-400">
+            <div class="space-y-3 text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed">
+              <ul class="space-y-2 pl-4 list-disc text-zinc-500 dark:text-zinc-400">
                 <li>
-                  <strong class="text-zinc-300">Faux positifs</strong> — Les adresses IP dans du code
-                  d'exemple ou les emails fictifs dans des templates seront détectés.
+                  <strong class="text-zinc-700 dark:text-zinc-300">{t('disclaimer.fpLabel')}</strong> — {t('disclaimer.fp')}
                 </li>
                 <li>
-                  <strong class="text-zinc-300">Faux négatifs</strong> — Un mot de passe comme{' '}
-                  <code class="bg-zinc-800 px-1 rounded">monchien2023</code> ne sera pas détecté.
+                  <strong class="text-zinc-700 dark:text-zinc-300">{t('disclaimer.fnLabel')}</strong> — {t('disclaimer.fn')}
+                  <code class="bg-zinc-100 dark:bg-zinc-800 px-1 rounded">{t('disclaimer.fnCode')}</code>{t('disclaimer.fnEnd')}
                 </li>
                 <li>
-                  <strong class="text-zinc-300">Noms propres</strong> — La détection est expérimentale
-                  et très approximative. Activez-la avec précaution.
+                  <strong class="text-zinc-700 dark:text-zinc-300">{t('disclaimer.namesLabel')}</strong> — {t('disclaimer.names')}
                 </li>
                 <li>
-                  <strong class="text-zinc-300">Formats structurés</strong> — Une valeur d'exemple
-                  dans un schéma JSON sera traitée identiquement à une vraie donnée.
+                  <strong class="text-zinc-700 dark:text-zinc-300">{t('disclaimer.structuredLabel')}</strong> — {t('disclaimer.structured')}
                 </li>
               </ul>
 
-              <p class="text-amber-400/80 font-medium">
-                Vous restez responsable de la vérification du prompt nettoyé avant de l'envoyer à un
-                service externe.
+              <p class="text-amber-600 dark:text-amber-400/80 font-medium">
+                {t('disclaimer.responsibility')}
               </p>
 
-              <p class="text-xs text-zinc-500">
-                Toutes les données sont traitées <strong class="text-zinc-400">localement dans votre navigateur</strong>.
-                Rien n'est transmis à un serveur.
+              <p class="text-xs text-zinc-400 dark:text-zinc-500">
+                {t('disclaimer.local')}<strong class="text-zinc-500 dark:text-zinc-400">{t('disclaimer.localBold')}</strong>{t('disclaimer.localEnd')}
               </p>
             </div>
 
@@ -83,7 +73,7 @@ export function Disclaimer() {
               onClick={() => setOpen(false)}
               class="mt-5 w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg py-2 text-sm font-medium transition-colors"
             >
-              Compris
+              {t('disclaimer.understood')}
             </button>
           </div>
         </div>

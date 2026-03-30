@@ -1,9 +1,9 @@
 /**
  * Detection category card in the sidebar.
- * Shows category name, count badge, enable/disable toggle, and expandable value list.
  */
 import { createSignal, Show, For, createMemo } from 'solid-js';
 import { store, toggleCategory, togglePattern } from '../../store/appStore.js';
+import { t } from '../../i18n/index.js';
 import { PATTERNS, CATEGORIES } from '../../patterns/index.js';
 import { Badge } from '../ui/Badge.jsx';
 import { Toggle } from '../ui/Toggle.jsx';
@@ -44,13 +44,10 @@ const CATEGORY_ICONS = {
 };
 
 export function CategoryCard(props) {
-  // props: { category }
   const [expanded, setExpanded] = createSignal(false);
 
   const categoryInfo = CATEGORIES[props.category];
   const patternsInCategory = PATTERNS.filter((p) => p.category === props.category);
-
-  const detectionData = createMemo(() => store.detections[props.category] || null);
 
   const totalCount = createMemo(() => {
     return patternsInCategory.reduce((sum, p) => {
@@ -65,7 +62,7 @@ export function CategoryCard(props) {
       const d = store.detections[p.id];
       if (d?.values) {
         for (const [original, replacement] of Object.entries(d.values)) {
-          result.push({ original, replacement, patternLabel: p.label });
+          result.push({ original, replacement });
         }
       }
     }
@@ -78,26 +75,28 @@ export function CategoryCard(props) {
 
   const hasDetections = createMemo(() => totalCount() > 0);
 
+  const categoryLabel = createMemo(() => t(`categories.${props.category}`));
+
   return (
     <div class={`rounded-lg border transition-colors ${
       hasDetections()
-        ? 'border-zinc-700 bg-zinc-800/40'
-        : 'border-zinc-800 bg-zinc-900/20'
+        ? 'border-zinc-300 dark:border-zinc-700 bg-zinc-100/60 dark:bg-zinc-800/40'
+        : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/20'
     }`}>
       {/* Category header */}
       <div class="flex items-center gap-2 px-3 py-2.5">
         {/* Icon */}
-        <span class={`text-${categoryInfo.color}-400`}>
+        <span class={`text-${categoryInfo.color}-500 dark:text-${categoryInfo.color}-400 shrink-0`}>
           {CATEGORY_ICONS[props.category]}
         </span>
 
         {/* Label + count */}
         <button
           class="flex items-center gap-2 flex-1 text-left"
-          onClick={() => hasDetections() && setExpanded((v) => !v)}
+          onClick={() => setExpanded((v) => !v)}
         >
-          <span class={`text-xs font-medium ${hasDetections() ? 'text-zinc-200' : 'text-zinc-500'}`}>
-            {categoryInfo.label}
+          <span class={`text-xs font-medium ${hasDetections() ? 'text-zinc-700 dark:text-zinc-200' : 'text-zinc-400 dark:text-zinc-500'}`}>
+            {categoryLabel()}
           </span>
 
           <Show when={hasDetections()}>
@@ -106,31 +105,29 @@ export function CategoryCard(props) {
         </button>
 
         {/* Expand chevron */}
-        <Show when={hasDetections()}>
-          <button
-            onClick={() => setExpanded((v) => !v)}
-            class="text-zinc-500 hover:text-zinc-300 transition-colors"
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          class="text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+        >
+          <svg
+            class={`w-3.5 h-3.5 transition-transform ${expanded() ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
           >
-            <svg
-              class={`w-3.5 h-3.5 transition-transform ${expanded() ? 'rotate-180' : ''}`}
-              fill="none" viewBox="0 0 24 24" stroke="currentColor"
-            >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-        </Show>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
 
         {/* Category toggle */}
         <Toggle
           checked={allEnabled()}
           onChange={() => toggleCategory(props.category)}
-          title={allEnabled() ? 'Désactiver cette catégorie' : 'Activer cette catégorie'}
+          title={allEnabled() ? t('patterns.disableCategory') : t('patterns.enableCategory')}
         />
       </div>
 
       {/* Expanded values list */}
       <Show when={expanded() && allValues().length > 0}>
-        <div class="border-t border-zinc-800 px-2 py-2 space-y-0.5 max-h-48 overflow-y-auto">
+        <div class="border-t border-zinc-200 dark:border-zinc-800 px-2 py-2 space-y-0.5 max-h-48 overflow-y-auto">
           <For each={allValues()}>
             {(item) => (
               <FoundValueItem
@@ -142,15 +139,15 @@ export function CategoryCard(props) {
         </div>
       </Show>
 
-      {/* Per-pattern toggles (shown when category is expanded but no detections yet) */}
+      {/* Per-pattern toggles when no detections but expanded */}
       <Show when={!hasDetections() && expanded()}>
-        <div class="border-t border-zinc-800 px-3 py-2 space-y-1.5">
+        <div class="border-t border-zinc-200 dark:border-zinc-800 px-3 py-2 space-y-1.5">
           <For each={patternsInCategory}>
             {(pattern) => (
               <div class="flex items-center justify-between gap-2">
-                <span class={`text-xs ${pattern.experimental ? 'text-amber-400/70' : 'text-zinc-500'}`}>
+                <span class={`text-xs ${pattern.experimental ? 'text-amber-500 dark:text-amber-400/70' : 'text-zinc-400 dark:text-zinc-500'}`}>
                   {pattern.label}
-                  {pattern.experimental && ' ⚠'}
+                  {pattern.experimental && ` — ${t('patterns.experimental')}`}
                 </span>
                 <Toggle
                   checked={store.enabledPatterns[pattern.id]}

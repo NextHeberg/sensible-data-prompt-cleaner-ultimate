@@ -3,23 +3,26 @@
  * All regex processing runs here, off the main thread.
  *
  * Message protocol:
- *   IN:  { type: 'process', text, enabledPatterns, replacementStyle, excludedValues, requestId }
+ *   IN:  { type: 'process', text, enabledPatternIds, replacementStyle, excludedValues, requestId }
  *   OUT: { type: 'result', cleaned, detections, requestId }
  *        { type: 'progress', percent, requestId }
  *        { type: 'error', message, requestId }
+ *
+ * The worker imports PATTERNS directly — the main thread only sends serializable IDs.
+ * This avoids DataCloneError (RegExp and functions cannot be cloned via postMessage).
  */
+import { PATTERNS } from '../patterns/index.js';
 
 // Fake data generators for 'anon' replacement style
 const ANON_GENERATORS = {
-  EMAIL: (n) => `utilisateur${n}@exemple.fr`,
+  EMAIL: (n) => `user${n}@example.com`,
   PHONE: () => '+33 6 00 00 00 00',
   IP: () => '10.0.0.1',
   IPV6: () => '::1',
   IBAN: () => 'FR7630006000011234567890189',
   RIB: () => '30006 00001 12345678901 89',
   CARD: () => '4000 0000 0000 0000',
-  EMAIL_KEY: () => '"email"',
-  SECRET: (n) => `"secret_${n}"`,
+  SECRET: (n) => `secret_value_${n}`,
   JWT: () => 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.xxx',
   AWS_KEY: () => 'AKIAIOSFODNN7EXAMPLE',
   GH_TOKEN: () => 'ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
@@ -29,10 +32,10 @@ const ANON_GENERATORS = {
   CP: () => '75001',
   CP_VILLE: () => '75001 Paris',
   INSEE: () => '1 85 12 75 001 001 42',
-  NOM: () => 'Jean Dupont',
+  NOM: () => 'John Doe',
   URL_CREDS: () => 'https://user:***@host',
   DB_URL: () => 'postgresql://user:***@localhost/db',
-  DEFAULT: (n) => `VALEUR_${n}`,
+  DEFAULT: (n) => `VALUE_${n}`,
 };
 
 function getAnonValue(placeholder, counter) {
@@ -67,17 +70,19 @@ function processText(text, enabledPatternsList, replacementStyle, excludedValues
     return { cleaned: '', detections: {} };
   }
 
-  // detections: { patternId: { label, category, risk, count, values: Map<original, replacement> } }
+  // detections: { patternId: { label, category, risk, count, values: { original: replacement } } }
   const detections = {};
   // counters per placeholder for labeling
   const counters = {};
 
-  // We'll do multiple passes — one per pattern to avoid named group conflicts
-  // and to support group-based replacement (replaceGroup)
   let result = text;
 
   for (const pattern of enabledPatternsList) {
-    const regex = new RegExp(pattern.regex.source, pattern.regex.flags.includes('g') ? pattern.regex.flags : pattern.regex.flags + 'g');
+    // Clone the regex to reset lastIndex for each call
+    const regex = new RegExp(
+      pattern.regex.source,
+      pattern.regex.flags.includes('g') ? pattern.regex.flags : pattern.regex.flags + 'g'
+    );
 
     if (!detections[pattern.id]) {
       detections[pattern.id] = {
@@ -86,26 +91,25 @@ function processText(text, enabledPatternsList, replacementStyle, excludedValues
         risk: pattern.risk,
         confidence: pattern.confidence || 'confirmed',
         count: 0,
-        values: {},  // original -> replacement
+        values: {},
       };
     }
 
     result = result.replace(regex, (...args) => {
-      // args: [match, ...groups, offset, string, namedGroups]
       const match = args[0];
-      const groups = args.slice(1, -2);  // capture groups
+      const groups = args.slice(1, -2);
 
       // Determine the actual sensitive value (might be a capture group)
       const sensitiveValue = pattern.replaceGroup ? groups[pattern.replaceGroup - 1] : match;
 
       if (!sensitiveValue) return match;
 
-      // Skip if in excluded values
+      // Skip if user excluded this value
       if (excludedValues.has(sensitiveValue) || excludedValues.has(match)) {
         return match;
       }
 
-      // Apply custom validator (Luhn, IBAN checksum, etc.)
+      // Apply custom validator (Luhn for cards, MOD-97 for IBAN, etc.)
       if (pattern.validate && !pattern.validate(match)) {
         return match;
       }
@@ -113,7 +117,7 @@ function processText(text, enabledPatternsList, replacementStyle, excludedValues
       const placeholder = pattern.placeholder;
       if (!counters[placeholder]) counters[placeholder] = 0;
 
-      // Check if we've seen this exact value before (reuse same replacement)
+      // Reuse same replacement if we've seen this exact value before
       let replacement;
       if (detections[pattern.id].values[sensitiveValue] !== undefined) {
         replacement = detections[pattern.id].values[sensitiveValue];
@@ -124,7 +128,7 @@ function processText(text, enabledPatternsList, replacementStyle, excludedValues
         detections[pattern.id].count++;
       }
 
-      // If replaceGroup, replace only that group within the full match
+      // If replaceGroup, replace only the captured group within the full match
       if (pattern.replaceGroup) {
         return match.replace(sensitiveValue, replacement);
       }
@@ -140,14 +144,12 @@ function processText(text, enabledPatternsList, replacementStyle, excludedValues
  * Posts progress updates between chunks.
  */
 function processInChunks(text, enabledPatterns, replacementStyle, excludedValues, requestId) {
-  const CHUNK_SIZE = 50000; // characters per chunk
+  const CHUNK_SIZE = 50000;
 
   if (text.length <= CHUNK_SIZE) {
-    const result = processText(text, enabledPatterns, replacementStyle, excludedValues);
-    return result;
+    return processText(text, enabledPatterns, replacementStyle, excludedValues);
   }
 
-  // Split at line boundaries
   const lines = text.split('\n');
   const chunks = [];
   let currentChunk = '';
@@ -164,21 +166,17 @@ function processInChunks(text, enabledPatterns, replacementStyle, excludedValues
 
   const allDetections = {};
   const cleanedParts = [];
-  // Share counters across chunks for consistent numbering
-  const sharedCounters = {};
 
   for (let i = 0; i < chunks.length; i++) {
-    // Post progress
     self.postMessage({
       type: 'progress',
-      percent: Math.round(((i) / chunks.length) * 100),
+      percent: Math.round((i / chunks.length) * 100),
       requestId,
     });
 
     const chunkResult = processText(chunks[i], enabledPatterns, replacementStyle, excludedValues);
     cleanedParts.push(chunkResult.cleaned);
 
-    // Merge detections
     for (const [patternId, data] of Object.entries(chunkResult.detections)) {
       if (!allDetections[patternId]) {
         allDetections[patternId] = { ...data, values: { ...data.values } };
@@ -197,16 +195,19 @@ function processInChunks(text, enabledPatterns, replacementStyle, excludedValues
 
 // Main message handler
 self.onmessage = function (event) {
-  const { type, text, enabledPatterns, replacementStyle, excludedValues, requestId } = event.data;
+  const { type, text, enabledPatternIds, replacementStyle, excludedValues, requestId } = event.data;
 
   if (type !== 'process') return;
 
   try {
     const excludedSet = new Set(excludedValues || []);
 
+    // Filter patterns by the received IDs — RegExp and validate functions are available here
+    const enabledList = PATTERNS.filter((p) => (enabledPatternIds || []).includes(p.id));
+
     const result = processInChunks(
       text || '',
-      enabledPatterns || [],
+      enabledList,
       replacementStyle || 'labeled',
       excludedSet,
       requestId
