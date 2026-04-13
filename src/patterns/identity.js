@@ -52,7 +52,7 @@ export const identityPatterns = [
     category: 'identity',
     // Heuristic: two capitalized words side by side not at sentence start
     // This will have false positives — disabled by default
-    regex: /(?<![.!?]\s)(?<![.!?]\n)\b([A-ZÁÀÂÄÉÈÊËÎÏÔÙÛÜÇ][a-záàâäéèêëîïôùûüç\-]{1,20})\s([A-ZÁÀÂÄÉÈÊËÎÏÔÙÛÜÇ][A-ZÁÀÂÄÉÈÊËÎÏÔÙÛÜÇA-Z\-]{1,25})\b/g,
+    regex: /(?<![.!?]\s)(?<![.!?]\n)\b([A-ZÁÀÂÄÉÈÊËÎÏÔÙÛÜÇ][a-záàâäéèêëîïôùûüç\-]{1,20})\s([A-ZÁÀÂÄÉÈÊËÎÏÔÙÛÜÇ][A-ZÁÀÂÄÉÈÊËÎÏÔÙÛÜÇa-záàâäéèêëîïôùûüç\-]{1,25})\b/g,
     validate: null,
     placeholder: 'NOM',
     risk: 'low',
