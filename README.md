@@ -14,9 +14,10 @@ All processing happens **entirely in your browser** — no data ever leaves your
 - [Replacement Modes](#replacement-modes)
 - [Supported File Formats](#supported-file-formats)
 - [Getting Started](#getting-started)
+  - [GitHub Container Registry (recommended)](#github-container-registry-recommended)
   - [Local Development](#local-development)
   - [Production Build](#production-build)
-  - [Docker](#docker)
+  - [Build your own Docker image](#build-your-own-docker-image)
 - [Project Structure](#project-structure)
 - [Architecture](#architecture)
 - [Configuration](#configuration)
@@ -90,6 +91,38 @@ The tool runs fully client-side using a Web Worker, so your text never travels o
 
 ## Getting Started
 
+### GitHub Container Registry (recommended)
+
+A Docker image is built and published automatically on every push to `main` via GitHub Actions.
+
+**Requirements:** Docker
+
+```bash
+# Pull the latest image
+docker pull ghcr.io/nextheberg/sensible-data-prompt-cleaner-ultimate:main
+
+# Run it
+docker run -p 3000:3000 ghcr.io/nextheberg/sensible-data-prompt-cleaner-ultimate:main
+```
+
+The application is then available at `http://localhost:3000`.
+
+You can also use Docker Compose by updating the image reference in `docker-compose.yml`:
+
+```yaml
+image: ghcr.io/nextheberg/sensible-data-prompt-cleaner-ultimate:main
+```
+
+Available tags:
+
+| Tag | Description |
+|---|---|
+| `main` | Latest build from the main branch |
+| `sha-<short>` | Pinned to a specific commit |
+| `x.y.z` / `x.y` | Pinned to a release version |
+
+---
+
 ### Local Development
 
 **Requirements:** Node.js 22+
@@ -124,7 +157,7 @@ The server listens on port `3000` by default (`http://localhost:3000`).
 
 ---
 
-### Docker
+### Build your own Docker image
 
 **Requirements:** Docker and Docker Compose
 
@@ -210,6 +243,9 @@ sensible-data-prompt-cleaner-ultimate/
 │
 ├── public/
 │   └── favicon.svg
+├── .github/
+│   └── workflows/
+│       └── docker.yml              # CI: build & push to ghcr.io on every push to main
 ├── index.html                      # HTML entry point (SPA)
 ├── server.js                       # Express production server
 ├── vite.config.js                  # Vite configuration
