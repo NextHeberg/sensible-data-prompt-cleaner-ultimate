@@ -10,10 +10,9 @@ export async function parseXml(file) {
     const doc = parser.parseFromString(text, 'application/xml');
     const parseError = doc.querySelector('parsererror');
     if (parseError) {
-      // Strip HTML metacharacters from DOM-sourced text before use (XSS guard)
-      const rawMsg = parseError.textContent ?? '';
-      const safeMsg = rawMsg.replace(/[<>"'&]/g, '').trim().slice(0, 100);
-      throw new Error('Fichier XML invalide : ' + safeMsg);
+      // Use a static error message — never inject DOM-sourced text into
+      // strings that may later be rendered as HTML (CodeQL js/xss-through-dom)
+      throw new Error('Fichier XML invalide');
     }
   } catch (e) {
     if (e.message.startsWith('Fichier XML invalide')) throw e;
