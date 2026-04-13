@@ -47,4 +47,27 @@ export const networkPatterns = [
     risk: 'high',
     enabled: true,
   },
+  {
+    id: 'mac_address',
+    label: 'Adresse MAC',
+    category: 'network',
+    // MAC addresses: XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX
+    regex: /\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b/g,
+    validate: null,
+    placeholder: 'MAC',
+    risk: 'medium',
+    enabled: true,
+  },
+  {
+    id: 'api_key_in_url',
+    label: 'Clé API dans URL',
+    category: 'network',
+    // API keys/tokens passed as URL query parameters
+    regex: /[?&](?:api[_-]?key|apikey|access[_-]?token|auth[_-]?token|token|key|secret)=([A-Za-z0-9_\-+/.]{8,128})/gi,
+    validate: null,
+    placeholder: 'SECRET',
+    risk: 'high',
+    enabled: true,
+    replaceGroup: 1,
+  },
 ];

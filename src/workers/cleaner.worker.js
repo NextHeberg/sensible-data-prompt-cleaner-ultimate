@@ -35,6 +35,9 @@ const ANON_GENERATORS = {
   NOM: () => 'John Doe',
   URL_CREDS: () => 'https://user:***@host',
   DB_URL: () => 'postgresql://user:***@localhost/db',
+  SWIFT: () => 'BNPAFRPPXXX',
+  CRYPTO: () => '0x0000000000000000000000000000000000000000',
+  MAC: () => '00:00:00:00:00:00',
   DEFAULT: (n) => `VALUE_${n}`,
 };
 
@@ -61,8 +64,152 @@ function buildReplacement(placeholder, counter, style, originalMatch) {
   }
 }
 
+// ────────────────────────────────────────────────────────────
+// Multi-pass detection engine (3 phases)
+// Phase 1: Collect all matches from original text (no mutation)
+// Phase 2: Resolve overlapping matches by priority
+// Phase 3: Build output string with replacements
+// ────────────────────────────────────────────────────────────
+
 /**
- * Main processing function.
+ * Phase 1: Collect all regex matches against the original text.
+ * Returns an array of match descriptors without modifying the text.
+ */
+function collectMatches(text, enabledPatternsList) {
+  const matches = [];
+
+  for (const pattern of enabledPatternsList) {
+    // Clone regex to reset lastIndex
+    const regex = new RegExp(
+      pattern.regex.source,
+      pattern.regex.flags.includes('g') ? pattern.regex.flags : pattern.regex.flags + 'g'
+    );
+
+    let m;
+    while ((m = regex.exec(text)) !== null) {
+      const fullMatch = m[0];
+      const fullMatchStart = m.index;
+      const fullMatchEnd = fullMatchStart + fullMatch.length;
+
+      // Determine the sensitive value and its position
+      let sensitiveValue = fullMatch;
+      let start = fullMatchStart;
+      let end = fullMatchEnd;
+
+      if (pattern.replaceGroup && m[pattern.replaceGroup]) {
+        sensitiveValue = m[pattern.replaceGroup];
+        // Locate the captured group within the full match
+        const groupOffset = fullMatch.indexOf(sensitiveValue);
+        if (groupOffset !== -1) {
+          start = fullMatchStart + groupOffset;
+          end = start + sensitiveValue.length;
+        }
+      }
+
+      // Run custom validator on the full match
+      if (pattern.validate && !pattern.validate(fullMatch)) {
+        continue;
+      }
+
+      matches.push({
+        patternId: pattern.id,
+        placeholder: pattern.placeholder,
+        start,
+        end,
+        sensitiveValue,
+        fullMatch,
+      });
+
+      // Prevent infinite loop on zero-length matches
+      if (fullMatch.length === 0) regex.lastIndex++;
+    }
+  }
+
+  return matches;
+}
+
+/**
+ * Phase 2: Resolve overlapping matches.
+ * Sort by start position; when overlaps occur, the earlier match wins
+ * (pattern priority is already encoded in the enabledPatternsList order:
+ * credentials first, then identity, financial, network, addresses).
+ */
+function resolveOverlaps(matches, enabledPatternsList) {
+  if (matches.length === 0) return [];
+
+  // Build priority map: lower index = higher priority
+  const priorityMap = {};
+  enabledPatternsList.forEach((p, i) => { priorityMap[p.id] = i; });
+
+  // Sort by start ascending, then by higher priority (lower index) first
+  matches.sort((a, b) => {
+    if (a.start !== b.start) return a.start - b.start;
+    const pa = priorityMap[a.patternId] ?? 999;
+    const pb = priorityMap[b.patternId] ?? 999;
+    return pa - pb;
+  });
+
+  const resolved = [];
+  let lastEnd = -1;
+
+  for (const match of matches) {
+    if (match.start >= lastEnd) {
+      resolved.push(match);
+      lastEnd = match.end;
+    }
+    // Overlapping match is silently dropped (earlier/higher-priority wins)
+  }
+
+  return resolved;
+}
+
+/**
+ * Phase 3: Build the output string by walking through the original text
+ * and inserting replacements at the resolved match positions.
+ */
+function buildOutput(text, resolvedMatches, replacementStyle, excludedValues, detections, counters) {
+  const parts = [];
+  let cursor = 0;
+
+  for (const match of resolvedMatches) {
+    // Skip if user excluded this value
+    if (excludedValues.has(match.sensitiveValue) || excludedValues.has(match.fullMatch)) {
+      continue;
+    }
+
+    const placeholder = match.placeholder;
+    if (!counters[placeholder]) counters[placeholder] = 0;
+
+    // Reuse same replacement if we've seen this exact value before
+    let replacement;
+    if (detections[match.patternId].values[match.sensitiveValue] !== undefined) {
+      replacement = detections[match.patternId].values[match.sensitiveValue];
+    } else {
+      counters[placeholder]++;
+      replacement = buildReplacement(placeholder, counters[placeholder], replacementStyle, match.sensitiveValue);
+      detections[match.patternId].values[match.sensitiveValue] = replacement;
+      detections[match.patternId].count++;
+    }
+
+    // Copy text before this match
+    if (match.start > cursor) {
+      parts.push(text.slice(cursor, match.start));
+    }
+
+    parts.push(replacement);
+    cursor = match.end;
+  }
+
+  // Append remaining text
+  if (cursor < text.length) {
+    parts.push(text.slice(cursor));
+  }
+
+  return parts.join('');
+}
+
+/**
+ * Main processing function (3-phase engine).
  * Returns { cleaned, detections }.
  */
 function processText(text, enabledPatternsList, replacementStyle, excludedValues) {
@@ -70,78 +217,37 @@ function processText(text, enabledPatternsList, replacementStyle, excludedValues
     return { cleaned: '', detections: {} };
   }
 
-  // detections: { patternId: { label, category, risk, count, values: { original: replacement } } }
   const detections = {};
-  // counters per placeholder for labeling
   const counters = {};
 
-  let result = text;
-
+  // Initialize detection entries for all enabled patterns
   for (const pattern of enabledPatternsList) {
-    // Clone the regex to reset lastIndex for each call
-    const regex = new RegExp(
-      pattern.regex.source,
-      pattern.regex.flags.includes('g') ? pattern.regex.flags : pattern.regex.flags + 'g'
-    );
-
-    if (!detections[pattern.id]) {
-      detections[pattern.id] = {
-        label: pattern.label,
-        category: pattern.category,
-        risk: pattern.risk,
-        confidence: pattern.confidence || 'confirmed',
-        count: 0,
-        values: {},
-      };
-    }
-
-    result = result.replace(regex, (...args) => {
-      const match = args[0];
-      const groups = args.slice(1, -2);
-
-      // Determine the actual sensitive value (might be a capture group)
-      const sensitiveValue = pattern.replaceGroup ? groups[pattern.replaceGroup - 1] : match;
-
-      if (!sensitiveValue) return match;
-
-      // Skip if user excluded this value
-      if (excludedValues.has(sensitiveValue) || excludedValues.has(match)) {
-        return match;
-      }
-
-      // Apply custom validator (Luhn for cards, MOD-97 for IBAN, etc.)
-      if (pattern.validate && !pattern.validate(match)) {
-        return match;
-      }
-
-      const placeholder = pattern.placeholder;
-      if (!counters[placeholder]) counters[placeholder] = 0;
-
-      // Reuse same replacement if we've seen this exact value before
-      let replacement;
-      if (detections[pattern.id].values[sensitiveValue] !== undefined) {
-        replacement = detections[pattern.id].values[sensitiveValue];
-      } else {
-        counters[placeholder]++;
-        replacement = buildReplacement(placeholder, counters[placeholder], replacementStyle, sensitiveValue);
-        detections[pattern.id].values[sensitiveValue] = replacement;
-        detections[pattern.id].count++;
-      }
-
-      // If replaceGroup, replace only the captured group within the full match
-      if (pattern.replaceGroup) {
-        return match.replace(sensitiveValue, replacement);
-      }
-      return replacement;
-    });
+    detections[pattern.id] = {
+      label: pattern.label,
+      category: pattern.category,
+      risk: pattern.risk,
+      confidence: pattern.confidence || 'confirmed',
+      count: 0,
+      values: {},
+    };
   }
 
-  return { cleaned: result, detections };
+  // Phase 1: Collect all matches from the original text
+  const allMatches = collectMatches(text, enabledPatternsList);
+
+  // Phase 2: Resolve overlapping matches
+  const resolved = resolveOverlaps(allMatches, enabledPatternsList);
+
+  // Phase 3: Build the output with replacements
+  const cleaned = buildOutput(text, resolved, replacementStyle, excludedValues, detections, counters);
+
+  return { cleaned, detections };
 }
 
 /**
  * Process large text in chunks to avoid blocking.
- * Posts progress updates between chunks.
+ * Multiline patterns (e.g. PEM keys) run against the full text to avoid
+ * chunk-boundary misses; single-line patterns are processed per chunk.
  */
 function processInChunks(text, enabledPatterns, replacementStyle, excludedValues, requestId) {
   const CHUNK_SIZE = 50000;
@@ -150,23 +256,37 @@ function processInChunks(text, enabledPatterns, replacementStyle, excludedValues
     return processText(text, enabledPatterns, replacementStyle, excludedValues);
   }
 
+  // Separate multiline patterns from single-line ones
+  const multilinePatterns = enabledPatterns.filter((p) => p.multiline === true);
+  const singleLinePatterns = enabledPatterns.filter((p) => p.multiline !== true);
+
+  // Split text into line-aligned chunks, tracking their start offsets
   const lines = text.split('\n');
   const chunks = [];
+  const chunkOffsets = [];
   let currentChunk = '';
+  let currentOffset = 0;
 
   for (const line of lines) {
     if ((currentChunk + line).length > CHUNK_SIZE && currentChunk.length > 0) {
       chunks.push(currentChunk);
+      chunkOffsets.push(currentOffset);
+      currentOffset += currentChunk.length;
       currentChunk = line + '\n';
     } else {
       currentChunk += line + '\n';
     }
   }
-  if (currentChunk) chunks.push(currentChunk);
+  if (currentChunk) {
+    chunks.push(currentChunk);
+    chunkOffsets.push(currentOffset);
+  }
 
-  const allDetections = {};
-  const cleanedParts = [];
+  // Collect matches from multiline patterns against the FULL text
+  const multilineMatches = collectMatches(text, multilinePatterns);
 
+  // Collect matches from single-line patterns chunk by chunk
+  const chunkMatches = [];
   for (let i = 0; i < chunks.length; i++) {
     self.postMessage({
       type: 'progress',
@@ -174,23 +294,35 @@ function processInChunks(text, enabledPatterns, replacementStyle, excludedValues
       requestId,
     });
 
-    const chunkResult = processText(chunks[i], enabledPatterns, replacementStyle, excludedValues);
-    cleanedParts.push(chunkResult.cleaned);
-
-    for (const [patternId, data] of Object.entries(chunkResult.detections)) {
-      if (!allDetections[patternId]) {
-        allDetections[patternId] = { ...data, values: { ...data.values } };
-      } else {
-        allDetections[patternId].count += data.count;
-        Object.assign(allDetections[patternId].values, data.values);
-      }
+    const matches = collectMatches(chunks[i], singleLinePatterns);
+    // Adjust match positions to absolute offsets within the full text
+    for (const m of matches) {
+      m.start += chunkOffsets[i];
+      m.end += chunkOffsets[i];
     }
+    chunkMatches.push(...matches);
   }
 
-  return {
-    cleaned: cleanedParts.join('').replace(/\n$/, text.endsWith('\n') ? '\n' : ''),
-    detections: allDetections,
-  };
+  // Combine, resolve overlaps, and build output
+  const allMatches = [...multilineMatches, ...chunkMatches];
+  const resolved = resolveOverlaps(allMatches, enabledPatterns);
+
+  const detections = {};
+  const counters = {};
+  for (const pattern of enabledPatterns) {
+    detections[pattern.id] = {
+      label: pattern.label,
+      category: pattern.category,
+      risk: pattern.risk,
+      confidence: pattern.confidence || 'confirmed',
+      count: 0,
+      values: {},
+    };
+  }
+
+  const cleaned = buildOutput(text, resolved, replacementStyle, excludedValues, detections, counters);
+
+  return { cleaned, detections };
 }
 
 // Main message handler

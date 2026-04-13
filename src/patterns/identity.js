@@ -29,7 +29,8 @@ export const identityPatterns = [
     label: 'Téléphone international',
     category: 'identity',
     // International E.164 format: +XX... (6 to 14 digits)
-    regex: /\+(?:[0-9][\s.\-]?){6,14}[0-9]/g,
+    // Lookbehind/lookahead prevent matching inside longer strings
+    regex: /(?<![A-Za-z0-9])\+(?:[0-9][\s.\-]?){6,14}[0-9](?![0-9])/g,
     validate: null,
     placeholder: 'PHONE',
     risk: 'high',
